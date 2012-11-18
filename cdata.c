@@ -6,6 +6,7 @@
 #include <linux/miscdevice.h>
 #include <linux/wait.h>
 #include <asm/io.h>
+#include <asm/uaccess.h>
 
 #include "myioctl.h"
 
@@ -14,10 +15,24 @@
 #endif
 
 #define	CDATA_MAJOR 121 
+#define BUFSIZE 1024
+
+struct cdata_t {
+   char         data[BUFSIZE];
+   int          index;
+   int          count;
+};	//semicolon must be added otherwise unexpected error may happen
 
 static int cdata_open(struct inode *inode, struct file *filp)
 {
+	struct cdata_t *cdata;
+
 	printk(KERN_ALERT "cdata: in cdata_open()\n");
+
+	cdata = (struct cdata_t *)kmalloc(sizeof(struct cdata_t), GFP_KERNEL);
+	cdata->index = 0;	// kmalloc won't init the memory to 0
+	cdata->count = 0;
+	filp->private_data = (void *)cdata;
 
 	return 0;
 }
@@ -25,15 +40,27 @@ static int cdata_open(struct inode *inode, struct file *filp)
 static int cdata_ioctl(struct inode *inode, struct file *filp, 
 			unsigned int cmd, unsigned long arg)
 {
+	struct cdata_t *cdata;
+	int i;
+	cdata = (struct cdata_t *)filp->private_data;
+
 	printk(KERN_ALERT "cdata: in cdata_ioctl()\n");
         switch (cmd)
 	{
 	   case CDATA_EMPTY:
 	      //printk(KERN_ALERT "cdata_ioctl: IOCTL_EMPTY\n");
 	      printk(KERN_ALERT "cdata_ioctl: %p\n", filp);
+
+	      for (i=0; i<cdata->count; i++)
+	         cdata->data[i] = 0;
+
 	      break;
 	   case CDATA_SYNC:
 	      printk(KERN_ALERT "cdata_ioctl: IOCTL_SYNC\n");
+
+	      for (i=0; i <cdata->count; i++)
+	         printk(KERN_ALERT "data[%i]=%c\n", i, cdata->data[i]);
+
 	      break;
 	   default:
 	      return -ENOTTY;
@@ -47,9 +74,24 @@ static ssize_t cdata_read(struct file *filp, char *buf,
 }
 
 static ssize_t cdata_write(struct file *filp, const char *buf, 
-				size_t size, loff_t *off)
+				size_t count, loff_t *off)
 {
+	struct cdata_t *cdata = (struct cdata_t *)filp->private_data;
+	int i;
+
 	printk(KERN_ALERT "cdata_write: %s\n", buf);
+
+	cdata->count = count;
+	
+	//mutex_lock
+	for(i=0; i<count; i++) {
+	   if(cdata->index > BUFSIZE)
+	      return -EFAULT;
+	   if(copy_from_user(&cdata->data[cdata->index++], &buf[i], 1))
+	      return -EFAULT;
+	}
+	//mutex_unlock
+
 	return 0;
 }
 

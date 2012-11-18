@@ -12,16 +12,21 @@
 int main(void)
 {
     int fd;
-    int i;
-    char pix[4] = {0x00, 0xff, 0x00, 0xff};
-    char *fb;
+    //char pix[4] = {0x00, 0xff, 0x00, 0xff};
+    //char *fb;
     pid_t child;
     
     child = fork();
 
-    i = 10000;
     fd = open("/dev/cdata", O_RDWR);
-    ioctl(fd, CDATA_EMPTY, &i);
+
+    if (child != 0) {	//parent
+       write(fd, "ABCDE", 5);
+    } else {		// child
+       write(fd, "12345", 5);
+    }
+
+    ioctl(fd, CDATA_SYNC, 0);
     //ioctl(fd, CDATA_SYNC, &i);
 
     //while(1) {
