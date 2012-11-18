@@ -29,11 +29,13 @@ static int cdata_ioctl(struct inode *inode, struct file *filp,
         switch (cmd)
 	{
 	   case CDATA_EMPTY:
-	      printk(KERN_ALERT "cdata_ioctl:IOCTL_EMPTY\n");
+	      printk(KERN_ALERT "cdata_ioctl: IOCTL_EMPTY\n");
 	      break;
 	   case CDATA_SYNC:
-	      printk(KERN_ALERT "cdata_ioctl:IOCTL_SYNC\n");
+	      printk(KERN_ALERT "cdata_ioctl: IOCTL_SYNC\n");
 	      break;
+	   default:
+	      return -ENOTTY;
 	}
 }
 
