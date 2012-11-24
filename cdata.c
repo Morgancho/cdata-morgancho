@@ -1,7 +1,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
-#include <linux/sched.h>
+#include <linux/sched.h>    // 0-include header file
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
 #include <linux/wait.h>
@@ -21,6 +21,9 @@ struct cdata_t {
    char         data[BUFSIZE];
    int          index;
    int          count;
+
+   wait_queue_head_t	wait;   // 1-must declare a wait queue by myself
+
 };	//semicolon must be added otherwise unexpected error may happen
 
 static int cdata_open(struct inode *inode, struct file *filp)
@@ -33,6 +36,8 @@ static int cdata_open(struct inode *inode, struct file *filp)
 	cdata->index = 0;	// kmalloc won't init the memory to 0
 	cdata->count = 0;
 	filp->private_data = (void *)cdata;
+
+        init_waitqueue_head(&cdata->wait);   // 2-init wait queue head
 
 	return 0;
 }
@@ -70,7 +75,10 @@ static int cdata_ioctl(struct inode *inode, struct file *filp,
 static ssize_t cdata_read(struct file *filp, char *buf, 
 				size_t size, loff_t *off)
 {
-	printk(KERN_ALERT "cdata: in cdata_read()\n");
+        struct cdata_t *cdata;        
+        cdata = (struct cdata_t *)filp->private_data;
+
+        printk(KERN_ALERT "cdata: in cdata_read()\n");
 }
 
 static ssize_t cdata_write(struct file *filp, const char *buf, 
@@ -82,10 +90,18 @@ static ssize_t cdata_write(struct file *filp, const char *buf,
 	printk(KERN_ALERT "cdata_write: %s\n", buf);
 
 	cdata->count = count;
+
+        DECLARE_WAITQUEUE(wait, current);   // 3-create a node with current process
 	
 	//mutex_lock
 	for(i=0; i<count; i++) {
 	   if(cdata->index > BUFSIZE)
+              add_wait_queue(&cdata->wait, &wait);   // 4-add the node into wait queue
+              current->state = TASK_UNINTERRUPTIBLE;   // 5-state change to waiting
+              schedule();   // 6-call scheduler to take over
+
+              current->state = TASK_RUNNING;   // 7-at this moment, current process is back and re-gain the cpu control
+              remove_wait_queue(&cdata->wait, &wait);  // 8-remove our node from wait queue
 	      return -EFAULT;
 	   if(copy_from_user(&cdata->data[cdata->index++], &buf[i], 1))
 	      return -EFAULT;
