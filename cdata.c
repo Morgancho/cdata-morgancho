@@ -104,7 +104,10 @@ static ssize_t cdata_write(struct file *filp, const char *buf,
 	   if(cdata->index > BUFSIZE)
               add_wait_queue(&cdata->wait, &wait);   // 4-add the node into wait queue
               current->state = TASK_UNINTERRUPTIBLE;   // 5-state change to waiting
+
+              up(&cdata_sem);   // add before schedule() for atomic of critical section
               schedule();   // 6-call scheduler to take over
+              down(&cdata_sem); // add after schedule() for atomic of critical section
 
               current->state = TASK_RUNNING;   // 7-at this moment, current process is back and re-gain the cpu control
               remove_wait_queue(&cdata->wait, &wait);  // 8-remove our node from wait queue
