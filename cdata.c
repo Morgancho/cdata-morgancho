@@ -89,13 +89,12 @@ static ssize_t cdata_write(struct file *filp, const char *buf,
 				size_t count, loff_t *off)
 {
 	struct cdata_t *cdata = (struct cdata_t *)filp->private_data;
+        DECLARE_WAITQUEUE(wait, current);   // 3-create a node with current process
 	int i;
 
 	printk(KERN_ALERT "cdata_write: %s\n", buf);
 
 	cdata->count = count;
-
-        DECLARE_WAITQUEUE(wait, current);   // 3-create a node with current process
 	
 	//mutex_lock
         down(&cdata_sem);   // 28- lock semaphore
@@ -138,8 +137,18 @@ struct file_operations cdata_fops = {
 
 int my_init_module(void)
 {
-	register_chrdev(CDATA_MAJOR, "cdata", &cdata_fops);
-	printk(KERN_ALERT "cdata module: registered.\n");
+        int i;	
+        char *fb;
+
+        if (register_chrdev(CDATA_MAJOR, "cdata", &cdata_fops)) {        
+	   printk(KERN_ALERT "cdata module: cannot registered.\n");
+        }
+
+        fb = ioremap(0x33f00000, 400);
+        for (i=0; i<100; i++) {
+           writel(0x00ff0000, fb);
+           fb += 1;
+        }
 
 	return 0;
 }
