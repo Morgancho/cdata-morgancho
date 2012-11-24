@@ -4,7 +4,8 @@
 #include <linux/sched.h>    // 0-include header file
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
-#include <linux/wait.h>
+#include <linux/wait.h>     // 0-include header file
+#include <linux/smp_lock.h> // 08-include header file for semaphore
 #include <asm/io.h>
 #include <asm/uaccess.h>
 
@@ -23,8 +24,11 @@ struct cdata_t {
    int          count;
 
    wait_queue_head_t	wait;   // 1-must declare a wait queue by myself
+   spinlock_t		lock;
 
 };	//semicolon must be added otherwise unexpected error may happen
+
+static DECLARE_MUTEX(cdata_sem);  // 18-declare semaphore and initial
 
 static int cdata_open(struct inode *inode, struct file *filp)
 {
@@ -94,6 +98,8 @@ static ssize_t cdata_write(struct file *filp, const char *buf,
         DECLARE_WAITQUEUE(wait, current);   // 3-create a node with current process
 	
 	//mutex_lock
+        down(&cdata_sem);   // 28- lock semaphore
+
 	for(i=0; i<count; i++) {
 	   if(cdata->index > BUFSIZE)
               add_wait_queue(&cdata->wait, &wait);   // 4-add the node into wait queue
@@ -106,7 +112,9 @@ static ssize_t cdata_write(struct file *filp, const char *buf,
 	   if(copy_from_user(&cdata->data[cdata->index++], &buf[i], 1))
 	      return -EFAULT;
 	}
+
 	//mutex_unlock
+        up(&cdata_sem);   // 38- unlock semaphore
 
 	return 0;
 }
