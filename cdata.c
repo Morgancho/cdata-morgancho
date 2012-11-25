@@ -18,6 +18,11 @@
 #define	CDATA_MAJOR 121 
 #define BUFSIZE 1024
 
+#define LCD_WIDTH   (240)
+#define LCD_HEIGHT  (320)
+#define LCD_BPP     (4)
+#define LCD_SIZE    (LCD_WIDTH * LCD_HEIGHT * LCD_BPP)
+
 struct cdata_t {
    char         data[BUFSIZE];
    int          index;
@@ -26,9 +31,37 @@ struct cdata_t {
    wait_queue_head_t	wait;   // 1-must declare a wait queue by myself
    spinlock_t		lock;
 
+   char         *iomem;
+   struct timer_list    timer;
+
 };	//semicolon must be added otherwise unexpected error may happen
 
 static DECLARE_MUTEX(cdata_sem);  // 18-declare semaphore and initial
+
+static cdata_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+   unsigned long start = vma->vm_start;
+   unsigned long end = vma->vm_end;
+   unsigned long size = end - start;
+
+   remap_page_range(start, 0x33f00000, size, PAGE_SHARED);
+}
+
+void flush_lcd (unsigned long priv)
+{
+        struct cdata_t *cdata = (struct cdata_t *)priv;
+        char *fb = cdata->iomem;
+        int index = cdata->index;
+        int i;
+
+        for (i=0; i<index; i++) {
+            writel(cdata->data[i], fb++);
+        }
+        cdata->index =0;
+        
+        // wake up process
+        current->state = TASK_RUNNING;
+}
 
 static int cdata_open(struct inode *inode, struct file *filp)
 {
@@ -42,6 +75,9 @@ static int cdata_open(struct inode *inode, struct file *filp)
 	filp->private_data = (void *)cdata;
 
         init_waitqueue_head(&cdata->wait);   // 2-init wait queue head
+
+        cdata->iomem = ioremap(0x33f00000, LCD_SIZE);
+        init_timer(&cdata->timer);   //initial timer
 
 	return 0;
 }
@@ -74,6 +110,8 @@ static int cdata_ioctl(struct inode *inode, struct file *filp,
 	   default:
 	      return -ENOTTY;
 	}
+        
+        return 0;
 }
 
 static ssize_t cdata_read(struct file *filp, char *buf, 
@@ -83,6 +121,7 @@ static ssize_t cdata_read(struct file *filp, char *buf,
         cdata = (struct cdata_t *)filp->private_data;
 
         printk(KERN_ALERT "cdata: in cdata_read()\n");
+        return 0;
 }
 
 static ssize_t cdata_write(struct file *filp, const char *buf, 
@@ -105,6 +144,12 @@ static ssize_t cdata_write(struct file *filp, const char *buf,
               current->state = TASK_UNINTERRUPTIBLE;   // 5-state change to waiting
 
               up(&cdata_sem);   // add before schedule() for atomic of critical section
+
+              cdata->timer.expires = jiffies + 500;
+              cdata->timer.function = flush_lcd;
+              cdata->timer.data = (unsigned long)cdata;
+              add_timer(&cdata->timer);
+
               schedule();   // 6-call scheduler to take over
               down(&cdata_sem); // add after schedule() for atomic of critical section
 
@@ -133,22 +178,25 @@ struct file_operations cdata_fops = {
 	ioctl:		cdata_ioctl,
 	read:		cdata_read,
 	write:		cdata_write,
+        mmap:           cdata_mmap,
 };
 
 int my_init_module(void)
 {
-        int i;	
-        char *fb;
+        //int i;	
+        //char *fb;
 
         if (register_chrdev(CDATA_MAJOR, "cdata", &cdata_fops)) {        
 	   printk(KERN_ALERT "cdata module: cannot registered.\n");
         }
 
+/*
         fb = ioremap(0x33f00000, 400);
         for (i=0; i<100; i++) {
            writel(0x00ff0000, fb);
-           fb += 1;
+           fb += 4;
         }
+*/
 
 	return 0;
 }
