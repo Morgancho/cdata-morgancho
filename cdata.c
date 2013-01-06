@@ -27,6 +27,7 @@ struct cdata_t {
    char         data[BUFSIZE];
    int          index;
    int          count;
+   int          offset;
 
    wait_queue_head_t	wait;   // 1-must declare a wait queue by myself
    spinlock_t		lock;
@@ -52,15 +53,21 @@ void flush_lcd (unsigned long priv)
         struct cdata_t *cdata = (struct cdata_t *)priv;
         char *fb = cdata->iomem;
         int index = cdata->index;
+        int offset = cdata->offset;
         int i;
 
         for (i=0; i<index; i++) {
-            writel(cdata->data[i], fb++);
+            writeb(cdata->data[i], fb+offset);
+            offset++;
+            if(offset >= LCD_SIZE)
+               offset = 0;
         }
         cdata->index =0;
+        cdata->offset = offset;
         
         // wake up process
-        current->state = TASK_RUNNING;
+        //current->state = TASK_RUNNING;   // we don't know where "current" point to at this moment
+        wake_up(&cdata->wait);
 }
 
 static int cdata_open(struct inode *inode, struct file *filp)
@@ -141,7 +148,7 @@ static ssize_t cdata_write(struct file *filp, const char *buf,
 	for(i=0; i<count; i++) {
 	   if(cdata->index > BUFSIZE)
               add_wait_queue(&cdata->wait, &wait);   // 4-add the node into wait queue
-              current->state = TASK_UNINTERRUPTIBLE;   // 5-state change to waiting
+              current->state = TASK_INTERRUPTIBLE;   // 5-state change to waiting
 
               up(&cdata_sem);   // add before schedule() for atomic of critical section
 
